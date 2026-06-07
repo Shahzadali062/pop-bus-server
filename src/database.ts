@@ -79,3 +79,10 @@ export function getTotalLocationCount() {
 
   return statement.get();
 }
+
+export function clearBusLocationDatabase() {
+  database.exec(`
+    DELETE FROM bus_locations;
+    DELETE FROM sqlite_sequence WHERE name='bus_locations';
+  `);
+}

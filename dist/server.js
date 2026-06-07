@@ -11,6 +11,7 @@ const database_1 = require("./database");
 const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
 const PORT = Number(process.env.PORT) || 4000;
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "popbus123";
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 const io = new socket_io_1.Server(server, {
@@ -47,6 +48,24 @@ app.get("/api/buses/:busId/history", (req, res) => {
         busId,
         count: history.length,
         history,
+    });
+});
+app.get("/api/admin/clear", (req, res) => {
+    const token = String(req.query.token || "");
+    if (token !== ADMIN_TOKEN) {
+        res.status(401).json({
+            status: "error",
+            message: "Unauthorized",
+        });
+        return;
+    }
+    (0, database_1.clearBusLocationDatabase)();
+    latestLocations = {};
+    io.emit("server:latest-locations", []);
+    res.json({
+        status: "ok",
+        message: "Database and live bus locations cleared",
+        totalSavedLocations: (0, database_1.getTotalLocationCount)(),
     });
 });
 io.on("connection", (socket) => {

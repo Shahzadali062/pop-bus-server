@@ -7,6 +7,7 @@ exports.database = void 0;
 exports.saveBusLocation = saveBusLocation;
 exports.getBusLocationHistory = getBusLocationHistory;
 exports.getTotalLocationCount = getTotalLocationCount;
+exports.clearBusLocationDatabase = clearBusLocationDatabase;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const node_sqlite_1 = require("node:sqlite");
@@ -67,4 +68,10 @@ function getTotalLocationCount() {
     SELECT COUNT(*) as total FROM bus_locations
   `);
     return statement.get();
+}
+function clearBusLocationDatabase() {
+    exports.database.exec(`
+    DELETE FROM bus_locations;
+    DELETE FROM sqlite_sequence WHERE name='bus_locations';
+  `);
 }
