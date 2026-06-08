@@ -15,7 +15,7 @@ const server = http.createServer(app);
 
 const PORT = Number(process.env.PORT) || 4000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "popbus123";
-const BUS_TIMEOUT_MS = 20000;
+const BUS_TIMEOUT_MS = 60000;
 
 app.use(cors());
 app.use(express.json());
@@ -58,7 +58,7 @@ function removeBusFromLiveMap(busId: string, reason: string) {
 
   delete latestLocations[cleanBusId];
 
-  console.log(`Bus removed from live map: ${cleanBusId}. Reason: ${reason}`);
+  console.log(`Bus removed: ${cleanBusId}. Reason: ${reason}`);
 
   io.emit("bus:removed", {
     busId: cleanBusId,
@@ -95,7 +95,7 @@ setInterval(() => {
       removeBusFromLiveMap(bus.busId, "inactive-timeout");
     }
   });
-}, 5000);
+}, 10000);
 
 app.get("/", (_req, res) => {
   res.json({
@@ -165,63 +165,34 @@ io.on("connection", (socket) => {
 
   socket.emit("server:latest-locations", getPublicBusLocations());
 
-  socket.on(
-    "driver:location-update",
-    (
-      payload: BusLocationPayload & { clientSentAt?: number },
-      callback?: (response: {
-        ok: boolean;
-        busId?: string;
-        serverReceivedAt?: number;
-        message?: string;
-      }) => void
-    ) => {
-      const serverReceivedAt = Date.now();
-
-      if (!isValidLocationPayload(payload)) {
-        socket.emit("server:error", {
-          message: "Invalid location payload",
-        });
-
-        if (callback) {
-          callback({
-            ok: false,
-            message: "Invalid location payload",
-          });
-        }
-
-        return;
-      }
-
-      const cleanBusId = payload.busId.trim().toUpperCase();
-
-      addSocketBusId(socket, cleanBusId);
-
-      const normalizedPayload: ActiveBusLocation = {
-        ...payload,
-        busId: cleanBusId,
-        socketId: socket.id,
-        lastSeen: serverReceivedAt,
-      };
-
-      latestLocations[cleanBusId] = normalizedPayload;
-
-      saveBusLocation(normalizedPayload);
-
-      console.log("Location received and saved:", normalizedPayload);
-
-      io.emit("bus:location-updated", normalizedPayload);
-      broadcastLatestLocations();
-
-      if (callback) {
-        callback({
-          ok: true,
-          busId: cleanBusId,
-          serverReceivedAt,
-        });
-      }
+  socket.on("driver:location-update", (payload: BusLocationPayload) => {
+    if (!isValidLocationPayload(payload)) {
+      socket.emit("server:error", {
+        message: "Invalid location payload",
+      });
+      return;
     }
-  );
+
+    const cleanBusId = payload.busId.trim().toUpperCase();
+
+    addSocketBusId(socket, cleanBusId);
+
+    const normalizedPayload: ActiveBusLocation = {
+      ...payload,
+      busId: cleanBusId,
+      socketId: socket.id,
+      lastSeen: Date.now(),
+    };
+
+    latestLocations[cleanBusId] = normalizedPayload;
+
+    saveBusLocation(normalizedPayload);
+
+    console.log("Location received:", normalizedPayload);
+
+    io.emit("bus:location-updated", normalizedPayload);
+    broadcastLatestLocations();
+  });
 
   socket.on(
     "driver:stop-sharing",
