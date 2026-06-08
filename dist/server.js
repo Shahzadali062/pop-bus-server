@@ -124,11 +124,18 @@ io.on("connection", (socket) => {
     console.log("Client connected:", socket.id);
     socket.data.busIds = [];
     socket.emit("server:latest-locations", getPublicBusLocations());
-    socket.on("driver:location-update", (payload) => {
+    socket.on("driver:location-update", (payload, callback) => {
+        const serverReceivedAt = Date.now();
         if (!isValidLocationPayload(payload)) {
             socket.emit("server:error", {
                 message: "Invalid location payload",
             });
+            if (callback) {
+                callback({
+                    ok: false,
+                    message: "Invalid location payload",
+                });
+            }
             return;
         }
         const cleanBusId = payload.busId.trim().toUpperCase();
@@ -137,13 +144,20 @@ io.on("connection", (socket) => {
             ...payload,
             busId: cleanBusId,
             socketId: socket.id,
-            lastSeen: Date.now(),
+            lastSeen: serverReceivedAt,
         };
         latestLocations[cleanBusId] = normalizedPayload;
         (0, database_1.saveBusLocation)(normalizedPayload);
         console.log("Location received and saved:", normalizedPayload);
         io.emit("bus:location-updated", normalizedPayload);
         broadcastLatestLocations();
+        if (callback) {
+            callback({
+                ok: true,
+                busId: cleanBusId,
+                serverReceivedAt,
+            });
+        }
     });
     socket.on("driver:stop-sharing", (payload, callback) => {
         const busId = String(payload?.busId || "").trim().toUpperCase();

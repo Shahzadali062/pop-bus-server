@@ -165,34 +165,63 @@ io.on("connection", (socket) => {
 
   socket.emit("server:latest-locations", getPublicBusLocations());
 
-  socket.on("driver:location-update", (payload: BusLocationPayload) => {
-    if (!isValidLocationPayload(payload)) {
-      socket.emit("server:error", {
-        message: "Invalid location payload",
-      });
-      return;
+  socket.on(
+    "driver:location-update",
+    (
+      payload: BusLocationPayload & { clientSentAt?: number },
+      callback?: (response: {
+        ok: boolean;
+        busId?: string;
+        serverReceivedAt?: number;
+        message?: string;
+      }) => void
+    ) => {
+      const serverReceivedAt = Date.now();
+
+      if (!isValidLocationPayload(payload)) {
+        socket.emit("server:error", {
+          message: "Invalid location payload",
+        });
+
+        if (callback) {
+          callback({
+            ok: false,
+            message: "Invalid location payload",
+          });
+        }
+
+        return;
+      }
+
+      const cleanBusId = payload.busId.trim().toUpperCase();
+
+      addSocketBusId(socket, cleanBusId);
+
+      const normalizedPayload: ActiveBusLocation = {
+        ...payload,
+        busId: cleanBusId,
+        socketId: socket.id,
+        lastSeen: serverReceivedAt,
+      };
+
+      latestLocations[cleanBusId] = normalizedPayload;
+
+      saveBusLocation(normalizedPayload);
+
+      console.log("Location received and saved:", normalizedPayload);
+
+      io.emit("bus:location-updated", normalizedPayload);
+      broadcastLatestLocations();
+
+      if (callback) {
+        callback({
+          ok: true,
+          busId: cleanBusId,
+          serverReceivedAt,
+        });
+      }
     }
-
-    const cleanBusId = payload.busId.trim().toUpperCase();
-
-    addSocketBusId(socket, cleanBusId);
-
-    const normalizedPayload: ActiveBusLocation = {
-      ...payload,
-      busId: cleanBusId,
-      socketId: socket.id,
-      lastSeen: Date.now(),
-    };
-
-    latestLocations[cleanBusId] = normalizedPayload;
-
-    saveBusLocation(normalizedPayload);
-
-    console.log("Location received and saved:", normalizedPayload);
-
-    io.emit("bus:location-updated", normalizedPayload);
-    broadcastLatestLocations();
-  });
+  );
 
   socket.on(
     "driver:stop-sharing",
