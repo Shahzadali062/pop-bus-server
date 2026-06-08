@@ -41,6 +41,7 @@ app.get("/health", (_req, res) => {
     serverTime: new Date().toISOString(),
     database: "connected",
     totalSavedLocations: getTotalLocationCount(),
+    activeBuses: Object.keys(latestLocations).length,
   });
 });
 
@@ -106,6 +107,20 @@ io.on("connection", (socket) => {
     console.log("Location received and saved:", payload);
 
     io.emit("bus:location-updated", payload);
+  });
+
+  socket.on("driver:stop-sharing", (payload: { busId: string }) => {
+    if (!payload.busId) return;
+
+    delete latestLocations[payload.busId];
+
+    console.log("Driver stopped sharing:", payload.busId);
+
+    io.emit("bus:removed", {
+      busId: payload.busId,
+    });
+
+    io.emit("server:latest-locations", Object.values(latestLocations));
   });
 
   socket.on("disconnect", () => {
