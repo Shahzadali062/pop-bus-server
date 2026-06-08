@@ -15,7 +15,6 @@ const server = http.createServer(app);
 
 const PORT = Number(process.env.PORT) || 4000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "popbus123";
-const BUS_TIMEOUT_MS = 60000;
 
 app.use(cors());
 app.use(express.json());
@@ -84,18 +83,6 @@ function addSocketBusId(socket: any, busId: string) {
     socket.data.busIds = [...currentBusIds, busId];
   }
 }
-
-setInterval(() => {
-  const now = Date.now();
-
-  Object.values(latestLocations).forEach((bus) => {
-    const inactiveFor = now - bus.lastSeen;
-
-    if (inactiveFor > BUS_TIMEOUT_MS) {
-      removeBusFromLiveMap(bus.busId, "inactive-timeout");
-    }
-  });
-}, 10000);
 
 app.get("/", (_req, res) => {
   res.json({

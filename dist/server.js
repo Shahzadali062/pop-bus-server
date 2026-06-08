@@ -12,7 +12,6 @@ const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
 const PORT = Number(process.env.PORT) || 4000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "popbus123";
-const BUS_TIMEOUT_MS = 60000;
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 const io = new socket_io_1.Server(server, {
@@ -61,15 +60,6 @@ function addSocketBusId(socket, busId) {
         socket.data.busIds = [...currentBusIds, busId];
     }
 }
-setInterval(() => {
-    const now = Date.now();
-    Object.values(latestLocations).forEach((bus) => {
-        const inactiveFor = now - bus.lastSeen;
-        if (inactiveFor > BUS_TIMEOUT_MS) {
-            removeBusFromLiveMap(bus.busId, "inactive-timeout");
-        }
-    });
-}, 10000);
 app.get("/", (_req, res) => {
     res.json({
         message: "Pop Bus Server is running",
