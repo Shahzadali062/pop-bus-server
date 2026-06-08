@@ -47,19 +47,25 @@ function getPublicBusLocations() {
   }));
 }
 
+function broadcastLatestLocations() {
+  io.emit("server:latest-locations", getPublicBusLocations());
+}
+
 function removeBusFromLiveMap(busId: string, reason: string) {
-  if (!latestLocations[busId]) return;
+  const cleanBusId = busId.trim().toUpperCase();
 
-  delete latestLocations[busId];
+  if (!latestLocations[cleanBusId]) return;
 
-  console.log(`Bus removed from live map: ${busId}. Reason: ${reason}`);
+  delete latestLocations[cleanBusId];
+
+  console.log(`Bus removed from live map: ${cleanBusId}. Reason: ${reason}`);
 
   io.emit("bus:removed", {
-    busId,
+    busId: cleanBusId,
     reason,
   });
 
-  io.emit("server:latest-locations", getPublicBusLocations());
+  broadcastLatestLocations();
 }
 
 function isValidLocationPayload(payload: BusLocationPayload) {
@@ -69,6 +75,14 @@ function isValidLocationPayload(payload: BusLocationPayload) {
     typeof payload.latitude === "number" &&
     typeof payload.longitude === "number"
   );
+}
+
+function addSocketBusId(socket: any, busId: string) {
+  const currentBusIds: string[] = socket.data.busIds || [];
+
+  if (!currentBusIds.includes(busId)) {
+    socket.data.busIds = [...currentBusIds, busId];
+  }
 }
 
 setInterval(() => {
@@ -147,6 +161,8 @@ app.get("/api/admin/clear", (req, res) => {
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
 
+  socket.data.busIds = [];
+
   socket.emit("server:latest-locations", getPublicBusLocations());
 
   socket.on("driver:location-update", (payload: BusLocationPayload) => {
@@ -159,7 +175,7 @@ io.on("connection", (socket) => {
 
     const cleanBusId = payload.busId.trim().toUpperCase();
 
-    socket.data.busId = cleanBusId;
+    addSocketBusId(socket, cleanBusId);
 
     const normalizedPayload: ActiveBusLocation = {
       ...payload,
@@ -175,7 +191,7 @@ io.on("connection", (socket) => {
     console.log("Location received and saved:", normalizedPayload);
 
     io.emit("bus:location-updated", normalizedPayload);
-    io.emit("server:latest-locations", getPublicBusLocations());
+    broadcastLatestLocations();
   });
 
   socket.on(
@@ -185,6 +201,9 @@ io.on("connection", (socket) => {
 
       if (busId) {
         removeBusFromLiveMap(busId, "driver-stopped-sharing");
+
+        const currentBusIds: string[] = socket.data.busIds || [];
+        socket.data.busIds = currentBusIds.filter((id) => id !== busId);
       }
 
       if (callback) {
@@ -194,11 +213,13 @@ io.on("connection", (socket) => {
   );
 
   socket.on("disconnect", () => {
-    const busId = String(socket.data.busId || "").trim().toUpperCase();
+    const busIds: string[] = socket.data.busIds || [];
 
-    if (busId) {
-      removeBusFromLiveMap(busId, "driver-disconnected");
-    }
+    busIds.forEach((busId) => {
+      if (latestLocations[busId]?.socketId === socket.id) {
+        removeBusFromLiveMap(busId, "driver-disconnected");
+      }
+    });
 
     console.log("Client disconnected:", socket.id);
   });
