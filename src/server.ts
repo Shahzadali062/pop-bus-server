@@ -145,6 +145,58 @@ app.get("/api/admin/clear", (req, res) => {
   });
 });
 
+
+app.post("/api/driver/location-update", (req, res) => {
+  const payload = req.body as BusLocationPayload;
+
+  if (!payload.busId || !payload.latitude || !payload.longitude) {
+    res.status(400).json({
+      status: "error",
+      message: "Invalid location payload",
+    });
+    return;
+  }
+
+  latestLocations[payload.busId] = {
+    ...payload,
+    socketId: "http-background",
+    lastSeen: Date.now(),
+  };
+  saveBusLocation(payload);
+
+  console.log("HTTP location received and saved:", payload);
+
+  io.emit("bus:location-updated", payload);
+
+  res.json({
+    status: "ok",
+    busId: payload.busId,
+  });
+});
+
+app.post("/api/driver/stop-sharing", (req, res) => {
+  const busId = String(req.body?.busId || "");
+
+  if (!busId) {
+    res.status(400).json({
+      status: "error",
+      message: "busId is required",
+    });
+    return;
+  }
+
+  delete latestLocations[busId];
+
+  console.log("HTTP driver stopped sharing:", busId);
+
+  io.emit("bus:removed", { busId });
+  io.emit("server:latest-locations", Object.values(latestLocations));
+
+  res.json({
+    status: "ok",
+    busId,
+  });
+});
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
 
@@ -215,3 +267,5 @@ io.on("connection", (socket) => {
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Pop Bus Server running on port ${PORT}`);
 });
+
+
