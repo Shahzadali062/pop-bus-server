@@ -150,6 +150,19 @@ app.post("/api/driver/stop-sharing", (req, res) => {
         busId,
     });
 });
+app.post("/api/admin/clear-buses", (req, res) => {
+    const busIds = Object.keys(latestLocations);
+    busIds.forEach((busId) => {
+        delete latestLocations[busId];
+        io.emit("bus:removed", { busId });
+    });
+    io.emit("server:latest-locations", []);
+    console.log("Admin cleared all live buses from dashboard");
+    res.json({
+        status: "ok",
+        cleared: busIds.length,
+    });
+});
 io.on("connection", (socket) => {
     console.log("Client connected:", socket.id);
     socket.data.busIds = [];
