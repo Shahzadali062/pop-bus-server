@@ -83,20 +83,21 @@ export function registerDriverSocketHandlers(io: Server) {
       }
     );
 
-    socket.on("disconnect", () => {
-      const busIds: string[] = socket.data.busIds || [];
+    socket.on("disconnect", (reason) => {
+        const busIds: string[] = socket.data.busIds || [];
 
-      busIds.forEach((busId) => {
-        const activeLocation = liveBusStore.getAll()[busId];
+        logger.info("SOCKET", "Client disconnected without removing buses", {
+          socketId: socket.id,
+          busIds,
+          reason,
+        });
 
-        if (activeLocation?.socketId === socket.id) {
-          removeBusFromLiveMap(io, busId, "driver-disconnected");
-        }
+        // IMPORTANT:
+        // Do not remove buses on socket disconnect.
+        // Mobile sockets disconnect when app is minimized, locked, or network changes.
+        // Bus must be removed only when driver explicitly stops sharing or admin clears it.
       });
-
-      logger.info("SOCKET", "Client disconnected", {
-        socketId: socket.id,
-      });
-    });
   });
 }
+
+
