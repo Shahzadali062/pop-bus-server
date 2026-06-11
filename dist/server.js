@@ -8,11 +8,15 @@ const cors_1 = __importDefault(require("cors"));
 const http_1 = __importDefault(require("http"));
 const socket_io_1 = require("socket.io");
 const env_1 = require("./config/env");
+require("./repositories/fleetSchema");
 const logger_1 = require("./utils/logger");
 const publicRoutes_1 = require("./routes/publicRoutes");
 const driverRoutes_1 = require("./routes/driverRoutes");
 const adminRoutes_1 = require("./routes/adminRoutes");
+const aiRoutes_1 = require("./routes/aiRoutes");
+const aiJobRoutes_1 = require("./routes/aiJobRoutes");
 const driverSocket_1 = require("./sockets/driverSocket");
+const aiSocket_1 = require("./sockets/aiSocket");
 const productionMiddlewares_1 = require("./middlewares/productionMiddlewares");
 const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
@@ -34,7 +38,10 @@ app.use(express_1.default.json({ limit: "100kb" }));
 app.use((0, publicRoutes_1.createPublicRoutes)());
 app.use((0, driverRoutes_1.createDriverRoutes)(io));
 app.use((0, adminRoutes_1.createAdminRoutes)(io));
+app.use((0, aiRoutes_1.createAiRoutes)());
+app.use((0, aiJobRoutes_1.createAiJobRoutes)(io));
 (0, driverSocket_1.registerDriverSocketHandlers)(io);
+(0, aiSocket_1.registerAiSocketHandlers)(io);
 app.use((_req, res) => {
     res.status(404).json({
         status: "error",

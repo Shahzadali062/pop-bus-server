@@ -1,4 +1,6 @@
-﻿type AiJob = {
+﻿import { io } from "socket.io-client";
+
+type AiJob = {
   jobId: string;
   message: string;
   history: Array<{
@@ -15,6 +17,11 @@ type LocalAiResponse = {
   message?: string;
 };
 
+type WorkerAcknowledgement = {
+  status?: string;
+  message?: string;
+};
+
 const RENDER_SERVER_URL = (
   process.env.AI_RENDER_SERVER_URL ||
   "https://pop-bus-server.onrender.com"
@@ -27,67 +34,31 @@ const LOCAL_AI_URL =
 const AI_WORKER_KEY =
   process.env.AI_WORKER_KEY || "";
 
-const POLL_INTERVAL_MS = 2000;
-const HEARTBEAT_INTERVAL_MS = 10000;
 const LOCAL_AI_TIMEOUT_MS = 90000;
+const ACK_TIMEOUT_MS = 15000;
+const HEARTBEAT_INTERVAL_MS = 10000;
 
-function sleep(durationMs: number) {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, durationMs);
-  });
-}
-
-function getWorkerHeaders() {
-  return {
-    "Content-Type": "application/json",
-    "x-ai-worker-key": AI_WORKER_KEY,
-  };
-}
-
-async function sendHeartbeat() {
-  const response = await fetch(
-    `${RENDER_SERVER_URL}/api/ai/worker/heartbeat`,
-    {
-      method: "POST",
-      headers: getWorkerHeaders(),
-      body: JSON.stringify({}),
-    }
+if (!AI_WORKER_KEY) {
+  console.error(
+    "[AI_SOCKET_WORKER] AI_WORKER_KEY is missing"
   );
 
-  if (!response.ok) {
-    throw new Error(
-      `Heartbeat failed with status ${response.status}`
-    );
-  }
+  process.exit(1);
 }
 
-async function claimNextJob(): Promise<AiJob | null> {
-  const response = await fetch(
-    `${RENDER_SERVER_URL}/api/ai/worker/next`,
-    {
-      method: "GET",
-      headers: {
-        "x-ai-worker-key": AI_WORKER_KEY,
-      },
-    }
-  );
+const socket = io(RENDER_SERVER_URL, {
+  transports: ["websocket"],
+  auth: {
+    workerKey: AI_WORKER_KEY,
+  },
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  timeout: 20000,
+});
 
-  if (response.status === 204) {
-    return null;
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      `Job claim failed with status ${response.status}`
-    );
-  }
-
-  const payload = (await response.json()) as {
-    job?: AiJob;
-  };
-
-  return payload.job || null;
-}
+let currentJobId: string | null = null;
 
 async function askLocalAi(job: AiJob) {
   const controller = new AbortController();
@@ -131,55 +102,60 @@ async function askLocalAi(job: AiJob) {
   }
 }
 
-async function completeJob(
-  job: AiJob,
-  result: LocalAiResponse
+function emitWithAcknowledgement(
+  eventName: string,
+  payload: Record<string, unknown>
 ) {
-  const response = await fetch(
-    `${RENDER_SERVER_URL}/api/ai/worker/${job.jobId}/complete`,
-    {
-      method: "POST",
-      headers: getWorkerHeaders(),
-      body: JSON.stringify({
-        answer: result.answer,
-        model: result.model,
-        meta: result.meta,
-      }),
+  return new Promise<WorkerAcknowledgement>(
+    (resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(
+          new Error(
+            `${eventName} acknowledgement timed out`
+          )
+        );
+      }, ACK_TIMEOUT_MS);
+
+      socket.emit(
+        eventName,
+        payload,
+        (result: WorkerAcknowledgement) => {
+          clearTimeout(timeout);
+
+          if (result?.status !== "ok") {
+            reject(
+              new Error(
+                result?.message ||
+                  `${eventName} failed`
+              )
+            );
+
+            return;
+          }
+
+          resolve(result);
+        }
+      );
     }
   );
-
-  if (!response.ok) {
-    throw new Error(
-      `Completing job failed with status ${response.status}`
-    );
-  }
-}
-
-async function failJob(
-  job: AiJob,
-  errorMessage: string
-) {
-  try {
-    await fetch(
-      `${RENDER_SERVER_URL}/api/ai/worker/${job.jobId}/fail`,
-      {
-        method: "POST",
-        headers: getWorkerHeaders(),
-        body: JSON.stringify({
-          error: errorMessage,
-        }),
-      }
-    );
-  } catch (error) {
-    console.error(
-      "[AI_WORKER] Could not report failed job",
-      error
-    );
-  }
 }
 
 async function processJob(job: AiJob) {
-  console.log("[AI_WORKER] Processing job", {
+  if (currentJobId) {
+    console.warn(
+      "[AI_SOCKET_WORKER] Ignored unexpected concurrent job",
+      {
+        currentJobId,
+        receivedJobId: job.jobId,
+      }
+    );
+
+    return;
+  }
+
+  currentJobId = job.jobId;
+
+  console.log("[AI_SOCKET_WORKER] Job received", {
     jobId: job.jobId,
     message: job.message,
   });
@@ -187,77 +163,105 @@ async function processJob(job: AiJob) {
   try {
     const result = await askLocalAi(job);
 
-    await completeJob(job, result);
+    currentJobId = null;
 
-    console.log("[AI_WORKER] Job completed", {
-      jobId: job.jobId,
-      model: result.model,
-    });
+    await emitWithAcknowledgement(
+      "ai-worker:complete",
+      {
+        jobId: job.jobId,
+        answer: result.answer,
+        model: result.model,
+        meta: result.meta,
+      }
+    );
+
+    console.log(
+      "[AI_SOCKET_WORKER] Job completed",
+      {
+        jobId: job.jobId,
+        model: result.model,
+      }
+    );
   } catch (error) {
+    currentJobId = null;
+
     const message =
       error instanceof Error
         ? error.message
         : "Unknown AI worker error";
 
-    console.error("[AI_WORKER] Job failed", {
-      jobId: job.jobId,
-      message,
-    });
-
-    await failJob(job, message);
-  }
-}
-
-async function runWorker() {
-  if (!AI_WORKER_KEY) {
     console.error(
-      "[AI_WORKER] AI_WORKER_KEY is missing"
+      "[AI_SOCKET_WORKER] Job failed",
+      {
+        jobId: job.jobId,
+        message,
+      }
     );
 
-    process.exit(1);
-  }
-
-  console.log("[AI_WORKER] Started", {
-    renderServer: RENDER_SERVER_URL,
-    localAi: LOCAL_AI_URL,
-  });
-
-  let lastHeartbeatAt = 0;
-
-  while (true) {
     try {
-      const now = Date.now();
-
-      if (
-        now - lastHeartbeatAt >=
-        HEARTBEAT_INTERVAL_MS
-      ) {
-        await sendHeartbeat();
-        lastHeartbeatAt = now;
-
-        console.log(
-          "[AI_WORKER] Heartbeat sent"
-        );
-      }
-
-      const job = await claimNextJob();
-
-      if (job) {
-        await processJob(job);
-      } else {
-        await sleep(POLL_INTERVAL_MS);
-      }
-    } catch (error) {
-      console.error("[AI_WORKER] Loop error", {
-        message:
-          error instanceof Error
-            ? error.message
-            : "Unknown worker loop error",
-      });
-
-      await sleep(5000);
+      await emitWithAcknowledgement(
+        "ai-worker:fail",
+        {
+          jobId: job.jobId,
+          error: message,
+        }
+      );
+    } catch (reportError) {
+      console.error(
+        "[AI_SOCKET_WORKER] Could not report failure",
+        reportError
+      );
     }
   }
 }
 
-void runWorker();
+socket.on("connect", () => {
+  console.log("[AI_SOCKET_WORKER] Connected", {
+    socketId: socket.id,
+    server: RENDER_SERVER_URL,
+  });
+});
+
+socket.on("ai-worker:ready", (payload) => {
+  console.log("[AI_SOCKET_WORKER] Ready", payload);
+});
+
+socket.on("ai-worker:job", (job: AiJob) => {
+  void processJob(job);
+});
+
+socket.on("ai-worker:error", (payload) => {
+  console.error(
+    "[AI_SOCKET_WORKER] Server error",
+    payload
+  );
+});
+
+socket.on("disconnect", (reason) => {
+  console.warn(
+    "[AI_SOCKET_WORKER] Disconnected",
+    {
+      reason,
+    }
+  );
+});
+
+socket.on("connect_error", (error) => {
+  console.error(
+    "[AI_SOCKET_WORKER] Connection error",
+    {
+      message: error.message,
+    }
+  );
+});
+
+setInterval(() => {
+  if (socket.connected) {
+    socket.emit("ai-worker:heartbeat");
+  }
+}, HEARTBEAT_INTERVAL_MS);
+
+console.log("[AI_SOCKET_WORKER] Starting", {
+  server: RENDER_SERVER_URL,
+  localAi: LOCAL_AI_URL,
+});

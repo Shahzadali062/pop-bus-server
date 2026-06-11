@@ -2,7 +2,9 @@
   Request,
   Router,
 } from "express";
+import type { Server } from "socket.io";
 import { timingSafeEqual } from "crypto";
+import { dispatchNextAiSocketJob } from "../sockets/aiSocket";
 
 import {
   AiChatHistoryItem,
@@ -44,7 +46,7 @@ function requireWorker(req: Request) {
   return isWorkerAuthorized(req);
 }
 
-export function createAiJobRoutes() {
+export function createAiJobRoutes(io: Server) {
   const router = Router();
 
   router.get("/api/ai/status", (_req, res) => {
@@ -94,6 +96,8 @@ export function createAiJobRoutes() {
       message,
       history
     );
+
+    dispatchNextAiSocketJob(io);
 
     return res.status(202).json({
       status: "accepted",
@@ -243,4 +247,5 @@ export function createAiJobRoutes() {
 
   return router;
 }
+
 
