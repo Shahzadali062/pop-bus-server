@@ -1,13 +1,15 @@
-import express, { NextFunction, Request, Response } from "express";
+﻿import express, { NextFunction, Request, Response } from "express";
 import cors from "cors";
 import http from "http";
 import { Server } from "socket.io";
 
 import { env } from "./config/env";
+import "./repositories/fleetSchema";
 import { logger } from "./utils/logger";
 import { createPublicRoutes } from "./routes/publicRoutes";
 import { createDriverRoutes } from "./routes/driverRoutes";
 import { createAdminRoutes } from "./routes/adminRoutes";
+import { createAiRoutes } from "./routes/aiRoutes";
 import { registerDriverSocketHandlers } from "./sockets/driverSocket";
 import {
   apiRateLimitMiddleware,
@@ -43,6 +45,7 @@ app.use(express.json({ limit: "100kb" }));
 app.use(createPublicRoutes());
 app.use(createDriverRoutes(io));
 app.use(createAdminRoutes(io));
+app.use(createAiRoutes());
 
 registerDriverSocketHandlers(io);
 
@@ -70,3 +73,5 @@ app.use(
 server.listen(env.port, "0.0.0.0", () => {
   logger.info("SERVER", `Pop Bus Server running on port ${env.port}`);
 });
+
+
