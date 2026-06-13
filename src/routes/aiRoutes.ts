@@ -113,6 +113,10 @@ locations, routes, trips, GPS quality, telemetry,
 events and tracking history.
 
 Response rules:
+- The database may use internal field names such as busId, activeBuses, buses, fleet, routes, trips or telemetry. In all user-facing answers, interpret these as student tracking data.
+- Treat busId as student name or student ID.
+- Treat activeBuses as online students.
+- Do not use the words bus, buses, fleet, driver or vehicle in the final answer unless the user specifically asks about them.
 - Reply naturally like a helpful human assistant.
 - Reply in the same language and writing style as the user.
 - For Roman Urdu questions, answer in Roman Urdu.
@@ -226,6 +230,7 @@ ${question}
 
   return router;
 }
+
 
 
 
