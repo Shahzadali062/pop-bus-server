@@ -12,6 +12,7 @@ import { createAdminRoutes } from "./routes/adminRoutes";
 import { createAiRoutes } from "./routes/aiRoutes";
 import { createAiJobRoutes } from "./routes/aiJobRoutes";
 import { registerDriverSocketHandlers } from "./sockets/driverSocket";
+import { registerSocketTimingLogger } from "./sockets/socketTimingLogger";
 import { registerAiSocketHandlers } from "./sockets/aiSocket";
 import {
   apiRateLimitMiddleware,
@@ -51,6 +52,7 @@ app.use(createAiRoutes());
 app.use(createAiJobRoutes(io));
 
 registerDriverSocketHandlers(io);
+registerSocketTimingLogger(io);
 registerAiSocketHandlers(io);
 
 app.use((_req, res) => {
@@ -77,6 +79,7 @@ app.use(
 server.listen(env.port, "0.0.0.0", () => {
   logger.info("SERVER", `Pop Bus Server running on port ${env.port}`);
 });
+
 
 
 
