@@ -14,6 +14,7 @@ import { createAiJobRoutes } from "./routes/aiJobRoutes";
 import { registerDriverSocketHandlers } from "./sockets/driverSocket";
 import { registerSocketTimingLogger } from "./sockets/socketTimingLogger";
 import { registerAiSocketHandlers } from "./sockets/aiSocket";
+import { registerCharacterSocketHandlers } from "./sockets/characterSocket";
 import {
   apiRateLimitMiddleware,
   compressionMiddleware,
@@ -54,6 +55,7 @@ app.use(createAiJobRoutes(io));
 registerDriverSocketHandlers(io);
 registerSocketTimingLogger(io);
 registerAiSocketHandlers(io);
+registerCharacterSocketHandlers(io);
 
 app.use((_req, res) => {
   res.status(404).json({

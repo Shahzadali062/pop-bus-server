@@ -16,7 +16,9 @@ const adminRoutes_1 = require("./routes/adminRoutes");
 const aiRoutes_1 = require("./routes/aiRoutes");
 const aiJobRoutes_1 = require("./routes/aiJobRoutes");
 const driverSocket_1 = require("./sockets/driverSocket");
+const socketTimingLogger_1 = require("./sockets/socketTimingLogger");
 const aiSocket_1 = require("./sockets/aiSocket");
+const characterSocket_1 = require("./sockets/characterSocket");
 const productionMiddlewares_1 = require("./middlewares/productionMiddlewares");
 const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
@@ -41,7 +43,9 @@ app.use((0, adminRoutes_1.createAdminRoutes)(io));
 app.use((0, aiRoutes_1.createAiRoutes)());
 app.use((0, aiJobRoutes_1.createAiJobRoutes)(io));
 (0, driverSocket_1.registerDriverSocketHandlers)(io);
+(0, socketTimingLogger_1.registerSocketTimingLogger)(io);
 (0, aiSocket_1.registerAiSocketHandlers)(io);
+(0, characterSocket_1.registerCharacterSocketHandlers)(io);
 app.use((_req, res) => {
     res.status(404).json({
         status: "error",
