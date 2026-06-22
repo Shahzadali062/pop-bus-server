@@ -6,8 +6,13 @@ const ALLOWED_ACTIONS = new Set([
   "idle",
   "walk",
   "run",
-  "jump",
-  "spin",
+  "superjump",
+  "fastspin",
+  "moonwalk",
+  "power",
+  "victory",
+  "slowmo",
+  "speedboost",
 ]);
 
 function normalizeRoomId(value: unknown) {
