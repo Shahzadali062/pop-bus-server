@@ -3,6 +3,14 @@
 type GameRole = "viewer" | "controller";
 
 const ALLOWED_CONTROLS = new Set([
+  "jump",
+  "boost",
+  "restart",
+  "pause",
+  "resume",
+  "start",
+
+  // Old button controls are kept for backward compatibility.
   "forward-down",
   "forward-up",
   "back-down",
@@ -11,9 +19,6 @@ const ALLOWED_CONTROLS = new Set([
   "left-up",
   "right-down",
   "right-up",
-  "jump",
-  "boost",
-  "restart",
 ]);
 
 function normalizeRoomId(value: unknown) {
@@ -34,6 +39,14 @@ function normalizeControl(value: unknown) {
   const control = value.trim().toLowerCase();
 
   return ALLOWED_CONTROLS.has(control) ? control : null;
+}
+
+function normalizeAxis(value: unknown) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return 0;
+  }
+
+  return Math.max(-1, Math.min(1, value));
 }
 
 export function registerGameSocketHandlers(io: Server) {
@@ -126,6 +139,47 @@ export function registerGameSocketHandlers(io: Server) {
           commandId: `${Date.now()}-${Math.random()
             .toString(36)
             .slice(2, 8)}`,
+          sentAt: Date.now(),
+        });
+
+        callback?.({
+          ok: true,
+        });
+      }
+    );
+
+    socket.on(
+      "game:joystick-command",
+      (
+        payload: {
+          roomId?: string;
+          x?: number;
+          y?: number;
+        },
+        callback?: (response: {
+          ok: boolean;
+          message?: string;
+        }) => void
+      ) => {
+        const roomId = normalizeRoomId(payload?.roomId);
+
+        if (!roomId) {
+          callback?.({
+            ok: false,
+            message: "Invalid roomId",
+          });
+          return;
+        }
+
+        const x = normalizeAxis(payload?.x);
+        const y = normalizeAxis(payload?.y);
+        const magnitude = Math.min(1, Math.sqrt(x * x + y * y));
+
+        socket.to(`game:${roomId}`).emit("game:joystick-command", {
+          roomId,
+          x,
+          y,
+          magnitude,
           sentAt: Date.now(),
         });
 
