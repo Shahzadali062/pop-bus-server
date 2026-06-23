@@ -15,6 +15,7 @@ import { registerDriverSocketHandlers } from "./sockets/driverSocket";
 import { registerSocketTimingLogger } from "./sockets/socketTimingLogger";
 import { registerAiSocketHandlers } from "./sockets/aiSocket";
 import { registerCharacterSocketHandlers } from "./sockets/characterSocket";
+import { registerGameSocketHandlers } from "./sockets/gameSocket";
 import {
   apiRateLimitMiddleware,
   compressionMiddleware,
@@ -56,6 +57,7 @@ registerDriverSocketHandlers(io);
 registerSocketTimingLogger(io);
 registerAiSocketHandlers(io);
 registerCharacterSocketHandlers(io);
+registerGameSocketHandlers(io);
 
 app.use((_req, res) => {
   res.status(404).json({
