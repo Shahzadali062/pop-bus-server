@@ -9,8 +9,6 @@ const ALLOWED_CONTROLS = new Set([
   "pause",
   "resume",
   "start",
-  "drift-down",
-  "drift-up",
 
   // Old button controls are kept for backward compatibility.
   "forward-down",
