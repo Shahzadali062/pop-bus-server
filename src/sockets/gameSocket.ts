@@ -9,8 +9,6 @@ const ALLOWED_CONTROLS = new Set([
   "pause",
   "resume",
   "start",
-  "brake-down",
-  "brake-up",
   "drift-down",
   "drift-up",
 
