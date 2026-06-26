@@ -1,6 +1,20 @@
-﻿import { Server, Socket } from "socket.io";
+import fs from "node:fs";
+import path from "node:path";
+import { Server, Socket } from "socket.io";
 
 type GameRole = "viewer" | "controller";
+
+type GameBestScore = {
+  score: number;
+  roomId?: string;
+  updatedAt?: string;
+};
+
+const BEST_SCORE_FILE = path.resolve(
+  process.cwd(),
+  "data",
+  "mini-game-best-score.json"
+);
 
 const ALLOWED_CONTROLS = new Set([
   "jump",
@@ -49,6 +63,42 @@ function normalizeAxis(value: unknown) {
   return Math.max(-1, Math.min(1, value));
 }
 
+function normalizeScore(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return Math.max(0, Math.min(999999, Math.floor(value)));
+}
+
+function loadBestScore(): GameBestScore {
+  try {
+    const raw = fs.readFileSync(BEST_SCORE_FILE, "utf8");
+    const parsed = JSON.parse(raw) as Partial<GameBestScore>;
+    const score = normalizeScore(parsed.score);
+
+    if (score === null) {
+      return { score: 0 };
+    }
+
+    return {
+      score,
+      roomId: typeof parsed.roomId === "string" ? parsed.roomId : undefined,
+      updatedAt:
+        typeof parsed.updatedAt === "string" ? parsed.updatedAt : undefined,
+    };
+  } catch {
+    return { score: 0 };
+  }
+}
+
+function saveBestScore(bestScore: GameBestScore) {
+  fs.mkdirSync(path.dirname(BEST_SCORE_FILE), { recursive: true });
+  fs.writeFileSync(BEST_SCORE_FILE, JSON.stringify(bestScore, null, 2));
+}
+
+let bestScore = loadBestScore();
+
 export function registerGameSocketHandlers(io: Server) {
   io.on("connection", (socket: Socket) => {
     socket.on(
@@ -83,6 +133,8 @@ export function registerGameSocketHandlers(io: Server) {
           roomId,
           role: socket.data.gameRole,
         });
+
+        socket.emit("game:best-score-updated", bestScore);
 
         socket.to(roomName).emit("game:peer-joined", {
           roomId,
@@ -144,6 +196,73 @@ export function registerGameSocketHandlers(io: Server) {
 
         callback?.({
           ok: true,
+        });
+      }
+    );
+
+    socket.on(
+      "game:best-score:get",
+      (callback?: (response: { ok: boolean; bestScore: GameBestScore }) => void) => {
+        callback?.({
+          ok: true,
+          bestScore,
+        });
+      }
+    );
+
+    socket.on(
+      "game:score-submit",
+      (
+        payload: {
+          roomId?: string;
+          score?: number;
+        },
+        callback?: (response: {
+          ok: boolean;
+          bestScore?: GameBestScore;
+          updated?: boolean;
+          message?: string;
+        }) => void
+      ) => {
+        const score = normalizeScore(payload?.score);
+
+        if (score === null) {
+          callback?.({
+            ok: false,
+            message: "Invalid score",
+          });
+          return;
+        }
+
+        const roomId = normalizeRoomId(payload?.roomId) ?? undefined;
+
+        if (score > bestScore.score) {
+          bestScore = {
+            score,
+            roomId,
+            updatedAt: new Date().toISOString(),
+          };
+
+          try {
+            saveBestScore(bestScore);
+          } catch {
+            // Keep runtime best score even when the host filesystem is read-only.
+          }
+
+          io.emit("game:best-score-updated", bestScore);
+
+          callback?.({
+            ok: true,
+            bestScore,
+            updated: true,
+          });
+          return;
+        }
+
+        callback?.({
+          ok: true,
+          bestScore,
+          updated: false,
         });
       }
     );
